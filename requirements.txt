@@ -5,3 +5,6 @@ flask_wtf
 psycopg2
 python-dotenv
 SQLAlchemy
+pyjwt
+azure-servicebus
+flask[async]

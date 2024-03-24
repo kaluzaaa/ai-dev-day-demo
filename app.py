@@ -1,14 +1,18 @@
 import os
+import logging
+import jwt
 from datetime import datetime
 
 from flask import Flask, redirect, render_template, request, send_from_directory, url_for
 from flask_migrate import Migrate
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
-
+from azure.servicebus.aio import ServiceBusClient
+from azure.servicebus import ServiceBusMessage
 
 app = Flask(__name__, static_folder='static')
 csrf = CSRFProtect(app)
+logging.basicConfig(level=logging.DEBUG)
 
 # WEBSITE_HOSTNAME exists only in production environment
 if 'WEBSITE_HOSTNAME' not in os.environ:
@@ -34,6 +38,27 @@ migrate = Migrate(app, db)
 # The import must be done after db initialization due to circular import issue
 from models import Restaurant, Review
 
+app.logger.debug("SB: %s", app.config.get('NAMESPACE_CONNECTION_STR'))
+app.logger.debug("Q: %s", app.config.get('QUEUE_NAME'))
+
+servicebus_client = ServiceBusClient.from_connection_string(
+        conn_str=app.config.get('NAMESPACE_CONNECTION_STR'))
+sender = servicebus_client.get_queue_sender(queue_name=app.config.get('QUEUE_NAME'))
+
+#@app.before_request
+#def log_request():
+#    app.logger.debug("Request Headers %s", request.headers)
+#    return None
+
+@app.context_processor
+def inject_user():
+    name = None
+    if request.headers.get('X-Ms-Token-Aad-Id-Token'):
+        token = request.headers.get('X-Ms-Token-Aad-Id-Token')
+        decoded_token = jwt.decode(token, options={"verify_signature": False})
+        name = decoded_token.get('name')
+    return dict(user=name)
+
 @app.route('/', methods=['GET'])
 def index():
     print('Request for index page received')
@@ -53,7 +78,9 @@ def create_restaurant():
 
 @app.route('/add', methods=['POST'])
 @csrf.exempt
-def add_restaurant():
+async def add_restaurant():
+    app.logger.debug("Add restaurant request received")
+
     try:
         name = request.values.get('restaurant_name')
         street_address = request.values.get('street_address')
@@ -70,7 +97,14 @@ def add_restaurant():
         restaurant.description = description
         db.session.add(restaurant)
         db.session.commit()
-
+        if request.headers.get('X-Ms-Token-Aad-Id-Token'):
+            token = request.headers.get('X-Ms-Token-Aad-Id-Token')
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            user = decoded_token.get('name')
+            app.logger.debug("Sending message to Service Bus")
+            message = ServiceBusMessage("New restaurant added: %s by %s" % (name, user))
+            test = await sender.send_messages(message)
+            app.logger.debug("Message sent to Service Bus. Test: %s", test)
         return redirect(url_for('details', id=restaurant.id))
 
 @app.route('/review/<int:id>', methods=['POST'])

@@ -11,3 +11,6 @@ DATABASE_URI = 'postgresql+psycopg2://{dbuser}:{dbpass}@{dbhost}/{dbname}'.forma
     dbhost=conn_str_params['host'],
     dbname=conn_str_params['dbname']
 )
+
+NAMESPACE_CONNECTION_STR =  os.environ['AZURE_SERVICEBUS_CONNECTIONSTRING']
+QUEUE_NAME = 'notification'

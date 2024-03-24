@@ -6,6 +6,9 @@ param tags object
 param databasePassword string
 @secure()
 param secretKey string
+param queueNames array = [
+  'notification'
+]
 
 var prefix = '${name}-${resourceToken}'
 
@@ -185,6 +188,8 @@ resource web 'Microsoft.Web/sites@2022-03-01' = {
       FLASK_DEBUG: 'False'
       //Added for Azure Redis Cache
       AZURE_REDIS_CONNECTIONSTRING: 'rediss://:${redisCache.listKeys().primaryKey}@${redisCache.name}.redis.cache.windows.net:6380/0'
+      AZURE_SERVICEBUS_CONNECTIONSTRING: '${listKeys('${serviceBusNamespace.id}/AuthorizationRules/RootManageSharedAccessKey', '2021-01-01-preview').primaryConnectionString}'
+      //Endpoint=sb://${serviceBusNamespace.name}.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=${serviceBusNamespace.listKeys().primaryKey}'
     }
   }
 
@@ -359,6 +364,19 @@ resource redisCache 'Microsoft.Cache/redis@2023-04-01' = {
     publicNetworkAccess:'Disabled'
   }
 }    
+
+resource serviceBusNamespace 'Microsoft.ServiceBus/namespaces@2022-10-01-preview' = {
+  name: '${prefix}-sbn'
+  location: location
+  sku: {
+    name: 'Basic'
+  }
+}
+
+resource queues 'Microsoft.ServiceBus/namespaces/queues@2022-10-01-preview' = [for queueName in queueNames: {
+  parent: serviceBusNamespace
+  name: queueName
+}]
 
 output WEB_URI string = 'https://${web.properties.defaultHostName}'
 output APPLICATIONINSIGHTS_CONNECTION_STRING string = applicationInsightsResources.outputs.APPLICATIONINSIGHTS_CONNECTION_STRING
