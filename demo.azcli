@@ -77,7 +77,7 @@ AZURE_REDIS_CONNECTIONSTRING=$(az keyvault secret show --vault-name aidevday3-ca
 AZURE_SERVICEBUS_CONNECTIONSTRING=$(az keyvault secret show --vault-name aidevday3-capps-kv --name AZURE-SERVICEBUS-CONNECTIONSTRING --query value -o tsv)
 SECRET_KEY=$(az keyvault secret show --vault-name aidevday3-capps-kv --name SECRET-KEY --query value -o tsv)
 
-CAPP_NAME=web-4
+CAPP_NAME=web
 
 az containerapp up \
   --resource-group $RESOURCE_GROUP \

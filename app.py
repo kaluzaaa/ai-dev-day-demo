@@ -43,8 +43,8 @@ migrate = Migrate(app, db)
 # The import must be done after db initialization due to circular import issue
 from models import Restaurant, Review
 
-app.logger.debug("SB: %s", app.config.get('NAMESPACE_CONNECTION_STR'))
-app.logger.debug("Q: %s", app.config.get('QUEUE_NAME'))
+# app.logger.debug("SB: %s", app.config.get('NAMESPACE_CONNECTION_STR'))
+# app.logger.debug("Q: %s", app.config.get('QUEUE_NAME'))
 
 servicebus_client = ServiceBusClient.from_connection_string(
         conn_str=app.config.get('NAMESPACE_CONNECTION_STR'))

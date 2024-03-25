@@ -18,7 +18,8 @@
 				"GitHub.copilot",
 				"ms-azuretools.vscode-bicep",
 				"ms-vscode.vscode-node-azure-pack",
-				"ms-vscode.azurecli"
+				"ms-vscode.azurecli",
+				"ms-azuretools.vscode-docker"
 			],
 			"settings": {
 				"sqltools.connections": [
