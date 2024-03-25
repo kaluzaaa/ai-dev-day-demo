@@ -16,7 +16,9 @@
 				"mtxr.sqltools",
 				"mtxr.sqltools-driver-pg",
 				"GitHub.copilot",
-				"ms-azuretools.vscode-bicep"
+				"ms-azuretools.vscode-bicep",
+				"ms-vscode.vscode-node-azure-pack",
+				"ms-vscode.azurecli"
 			],
 			"settings": {
 				"sqltools.connections": [

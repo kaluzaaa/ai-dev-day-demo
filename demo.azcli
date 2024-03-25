@@ -1,0 +1,131 @@
+LOCATION=eastus
+RESOURCE_GROUP=aidevday3-capps-rg
+DATA_RESOURCE_GROUP=aidevday2-rg
+REMOTE_PEER_VNET=aidevday2-ghidvrniuzomu-vnet
+REMOTE_PEER_ID=$(az network vnet show --resource-group $DATA_RESOURCE_GROUP --name $REMOTE_PEER_VNET --query id -o tsv)
+
+# Create a resource group
+az group create --name $RESOURCE_GROUP --location $LOCATION
+
+# Create key vault
+az keyvault create \
+  --name aidevday3-capps-kv \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION
+
+# Create secrets in key vault
+az keyvault secret set \
+  --vault-name aidevday3-capps-kv \
+  --name SECRET-KEY \
+  --value "addWB8a90Fv7E9E"
+
+# Create Azure Virtual Network and Subnet 172.16.0.0/16
+az network vnet create \
+  --name vnet \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION \
+  --address-prefixes 172.16.0.0/16
+
+# Get vnet id into a variable
+VNET_ID=$(az network vnet show --resource-group $RESOURCE_GROUP --name vnet --query id -o tsv)
+
+az network vnet subnet create \
+  --name capps \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name vnet \
+  --address-prefixes 172.16.0.0/23 \
+  --delegations Microsoft.App/environments
+
+az network vnet peering create \
+  --name vnet-peering \
+  --resource-group $RESOURCE_GROUP \
+  --vnet-name vnet \
+  --remote-vnet $REMOTE_PEER_VNET \
+  --allow-vnet-access
+
+az network vnet peering create \
+  --name vnet-peering \
+  --resource-group $DATA_RESOURCE_GROUP \
+  --vnet-name aidevday2-ghidvrniuzomu-vnet \
+  --remote-vnet $VNET_ID \
+  --allow-vnet-access
+
+# Create dns link in vnet for privatelink.redis.cache.windows.net and aidevday2-ghidvrniuzomu-postgres-server.private.postgres.database.azure.com from DATA_RESOURCE_GROUP
+az network private-dns link vnet create \
+  --resource-group $DATA_RESOURCE_GROUP \
+  --zone-name privatelink.redis.cache.windows.net \
+  --name privatelink-redis \
+  --virtual-network $VNET_ID \
+  --registration-enabled false
+
+az network private-dns link vnet create \
+  --resource-group $DATA_RESOURCE_GROUP \
+  --zone-name aidevday2-ghidvrniuzomu-postgres-server.private.postgres.database.azure.com \
+  --name privatelink-postgres \
+  --virtual-network $VNET_ID \
+  --registration-enabled false
+
+az containerapp env create \
+  -n env \
+  -g $RESOURCE_GROUP \
+  --location $LOCATION \
+  --infrastructure-subnet-resource-id $VNET_ID/subnets/capps
+
+# Get secrets into variables
+AZURE_POSTGRESQL_CONNECTIONSTRING=$(az keyvault secret show --vault-name aidevday3-capps-kv --name AZURE-POSTGRESQL-CONNECTIONSTRING --query value -o tsv)
+AZURE_REDIS_CONNECTIONSTRING=$(az keyvault secret show --vault-name aidevday3-capps-kv --name AZURE-REDIS-CONNECTIONSTRING --query value -o tsv)
+AZURE_SERVICEBUS_CONNECTIONSTRING=$(az keyvault secret show --vault-name aidevday3-capps-kv --name AZURE-SERVICEBUS-CONNECTIONSTRING --query value -o tsv)
+SECRET_KEY=$(az keyvault secret show --vault-name aidevday3-capps-kv --name SECRET-KEY --query value -o tsv)
+
+CAPP_NAME=web-4
+
+az containerapp up \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION \
+  --name $CAPP_NAME \
+  --ingress external \
+  --target-port 50505 \
+  --source . \
+  --env-vars AZURE_POSTGRESQL_CONNECTIONSTRING="$AZURE_POSTGRESQL_CONNECTIONSTRING" \
+             AZURE_REDIS_CONNECTIONSTRING="$AZURE_REDIS_CONNECTIONSTRING" \
+             AZURE_SERVICEBUS_CONNECTIONSTRING="$AZURE_SERVICEBUS_CONNECTIONSTRING" \
+             SECRET_KEY="$SECRET_KEY" \
+             CONTAINER_APPS="True"
+
+# Create managed identity for the container app
+az identity create \
+  --name $CAPP_NAME \
+  --resource-group $RESOURCE_GROUP
+
+# Add permissions to the managed identity to read secrets from the key vault
+az keyvault set-policy \
+  --name aidevday3-capps-kv \
+  --object-id $(az identity show --name $CAPP_NAME --resource-group $RESOURCE_GROUP --query principalId -o tsv) \
+  --secret-permissions get list
+            
+# Assign the managed identity to the container app
+az containerapp identity assign \
+  --name $CAPP_NAME \
+  --resource-group $RESOURCE_GROUP \
+  --user-assigned $CAPP_NAME
+
+USER_ASSIGNED_ID=$(az identity show --name $CAPP_NAME --resource-group $RESOURCE_GROUP --query id -o tsv)
+
+AZURE_POSTGRESQL_CONNECTIONSTRING_URI=$(az keyvault secret show --vault-name aidevday3-capps-kv --name AZURE-POSTGRESQL-CONNECTIONSTRING --query id -o tsv)
+
+az containerapp secret set -n $CAPP_NAME \
+  -g $RESOURCE_GROUP \
+  --secrets azp-sql-connstr=keyvaultref:$AZURE_POSTGRESQL_CONNECTIONSTRING_URI,identityref:$USER_ASSIGNED_ID
+
+az containerapp up \
+  --resource-group $RESOURCE_GROUP \
+  --location $LOCATION \
+  --name $CAPP_NAME \
+  --ingress external \
+  --target-port 50505 \
+  --source . \
+  --env-vars AZURE_POSTGRESQL_CONNECTIONSTRING="secretref:azp-sql-connstr" \
+             AZURE_REDIS_CONNECTIONSTRING="$AZURE_REDIS_CONNECTIONSTRING" \
+             AZURE_SERVICEBUS_CONNECTIONSTRING="$AZURE_SERVICEBUS_CONNECTIONSTRING" \
+             SECRET_KEY="$SECRET_KEY" \
+             CONTAINER_APPS="True"

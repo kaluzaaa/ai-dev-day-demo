@@ -15,14 +15,19 @@ csrf = CSRFProtect(app)
 logging.basicConfig(level=logging.DEBUG)
 
 # WEBSITE_HOSTNAME exists only in production environment
-if 'WEBSITE_HOSTNAME' not in os.environ:
-    # local development, where we'll use environment variables
-    print("Loading config.development and environment variables from .env file.")
-    app.config.from_object('azureproject.development')
-else:
+if 'WEBSITE_HOSTNAME' in os.environ:
     # production
     print("Loading config.production.")
     app.config.from_object('azureproject.production')
+elif 'CONTAINER_APPS' in os.environ:
+    # production
+    print("Loading config.production.")
+    app.config.from_object('azureproject.production')
+else:
+
+    # local development, where we'll use environment variables
+    print("Loading config.development and environment variables from .env file.")
+    app.config.from_object('azureproject.development')
 
 app.config.update(
     SQLALCHEMY_DATABASE_URI=app.config.get('DATABASE_URI'),

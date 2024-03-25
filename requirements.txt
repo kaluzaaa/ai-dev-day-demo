@@ -8,3 +8,4 @@ SQLAlchemy
 pyjwt
 azure-servicebus
 flask[async]
+gunicorn
